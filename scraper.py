@@ -7,9 +7,12 @@ import json
 
 
 class WebScraper:
+    """Web scraper for crawling and extracting text from web pages."""
+
     def __init__(
         self, base_url_substr, max_pages=100, output_file="scraped_data.jsonl"
     ):
+        """Initialize the scraper with base URL substring, max pages, and output file."""
         self.base_url_substr = base_url_substr
         self.visited = set()
         self.max_pages = max_pages
@@ -51,6 +54,7 @@ class WebScraper:
         ]
 
     def flush_buffer(self):
+        """Write buffered scraped data to output file and clear buffer."""
         if not self.buffer:
             return  # Nothing to flush
         with open(self.output_file, "a", encoding="utf-8") as f:
@@ -61,6 +65,7 @@ class WebScraper:
         self.buffer.clear()
 
     def add_to_buffer(self, url, text):
+        """Add scraped text to buffer; flush if buffer is full."""
         if len(text) < 100:  # Skip very short texts
             return
 
@@ -69,12 +74,15 @@ class WebScraper:
             self.flush_buffer()
 
     def is_skippable_url(self, url):
+        """Check if the URL should be skipped based on substrings."""
         return any(substr in url.lower() for substr in self.skip_substrs)
 
     def is_internal_url(self, url):
+        """Check if the URL is internal to the base domain."""
         return self.base_url_substr in url
 
     def clean_text(self, soup):
+        """Remove unwanted tags and elements, then extract clean text from HTML soup."""
         # Remove scripts, styles, headers, footers, navs
         for tag in soup.find_all(self.tags_to_remove):
             tag.decompose()
@@ -92,6 +100,7 @@ class WebScraper:
         return " ".join(text.split())
 
     def scrape_page(self, url):
+        """Scrape a single page, returning cleaned text and internal links."""
         try:
             print(f"Scraping: {url}")
             response = requests.get(url, timeout=10)
@@ -108,6 +117,7 @@ class WebScraper:
         return text, internal_links
 
     def scrape_recursive(self, url):
+        """Recursively scrape pages starting from the given URL."""
         if (
             url in self.visited
             or self.pages_scraped >= self.max_pages
@@ -131,6 +141,7 @@ class WebScraper:
                 self.scrape_recursive(link)
 
     def scrape_via_queue(self, start_url):
+        """Scrape pages using a queue (BFS) starting from the given URL."""
         queue = deque([start_url])
 
         while queue and self.pages_scraped < self.max_pages:
@@ -151,8 +162,9 @@ class WebScraper:
 
 
 if __name__ == "__main__":
+    """Run the web scraper on sjsu.edu domain."""
     scraper = WebScraper(
-        base_url_substr="sjsu.edu", max_pages=1000, output_file="scraped_data_1.jsonl"
+        base_url_substr="sjsu.edu", max_pages=200, output_file="scraped_data_1.jsonl"
     )
     scraper.scrape_via_queue("https://www.sjsu.edu/")
     # scraper.scrape_recursive("https://www.sjsu.edu/")
