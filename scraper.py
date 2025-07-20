@@ -116,33 +116,9 @@ class WebScraper:
         internal_links = [link for link in links if self.is_internal_url(link)]
         return text, internal_links
 
-    def scrape_recursive(self, url):
-        """Recursively scrape pages starting from the given URL."""
-        if (
-            url in self.visited
-            or self.pages_scraped >= self.max_pages
-            or self.is_skippable_url(url)
-        ):
-            return
-
-        self.visited.add(url)
-        self.pages_scraped += 1
-
-        text, links = self.scrape_page(url)
-
-        # print the results
-        print(f"---Page {self.pages_scraped}: {url} ---{text}")  # Print first 500 chars
-        # write to file
-        self.add_to_buffer(url, text)
-
-        for link in links:
-            if link not in self.visited:
-                # time.sleep(1)  # be polite, avoid hammering the server
-                self.scrape_recursive(link)
-
-    def scrape_via_queue(self, start_url):
+    def scrape_via_queue(self, start_urls):
         """Scrape pages using a queue (BFS) starting from the given URL."""
-        queue = deque([start_url])
+        queue = deque(start_urls)
 
         while queue and self.pages_scraped < self.max_pages:
             url = queue.popleft()
@@ -166,5 +142,9 @@ if __name__ == "__main__":
     scraper = WebScraper(
         base_url_substr="sjsu.edu", max_pages=200, output_file="scraped_data_1.jsonl"
     )
-    scraper.scrape_via_queue("https://www.sjsu.edu/")
-    # scraper.scrape_recursive("https://www.sjsu.edu/")
+    scraper.scrape_via_queue(
+        start_urls=[
+            "https://www.sjsu.edu/",
+            "https://catalog.sjsu.edu/content.php?catoid=13&navoid=4983",
+        ]
+    )
