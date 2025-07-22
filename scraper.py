@@ -5,6 +5,7 @@ from collections import deque
 import time
 import json
 import config
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 
 class WebScraper:
@@ -137,6 +138,54 @@ class WebScraper:
 
         self.flush_buffer()  # Flush any remaining data in buffer
 
+    def create_chunks():
+        """
+        Splits input text into smaller chunks and writes them to an output file.
+        Each chunk includes metadata for later retrieval.
+        """
+
+        CHUNK_SIZE = config.TEXT_SPLITTER_CONFIG[
+            "chunk_size"
+        ]  # characters based on token limit of 512
+        CHUNK_OVERLAP = CHUNK_SIZE // 10  # characters
+
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
+        )
+        input_path = config.TEXT_SPLITTER_CONFIG["input_data_file"]
+        output_path = config.TEXT_SPLITTER_CONFIG["output_data_file"]
+
+        with open(input_path, "r", encoding="utf-8") as infile, open(
+            output_path, "w", encoding="utf-8"
+        ) as outfile:
+            doc_index = 0
+            for line in infile:
+                line = line.strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                text = data["text"]
+                url = data["url"]
+
+                chunks = text_splitter.split_text(text)
+
+                chunk_index = 0
+                for chunk in chunks:
+                    chunked_data = {
+                        "metadata": {
+                            "url": url,
+                            "doc_index": doc_index,
+                            "chunk_index": chunk_index,
+                            "id": f"{doc_index}_{chunk_index}",
+                        },
+                        "text": chunk,
+                    }
+                    outfile.write(json.dumps(chunked_data, ensure_ascii=False) + "\n")
+
+                    chunk_index += 1
+
+                doc_index += 1
+
 
 if __name__ == "__main__":
     """Run the web scraper on sjsu.edu domain."""
@@ -148,3 +197,5 @@ if __name__ == "__main__":
     scraper.scrape_via_queue(
         start_urls=config.SCRAPER_CONFIG["start_urls"],
     )
+    print("Creating chunks from scraped data...")
+    scraper.create_chunks()
