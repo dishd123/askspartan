@@ -4,6 +4,7 @@ from urllib.parse import urljoin, urlparse
 from collections import deque
 import time
 import json
+import config
 
 
 class WebScraper:
@@ -140,11 +141,10 @@ class WebScraper:
 if __name__ == "__main__":
     """Run the web scraper on sjsu.edu domain."""
     scraper = WebScraper(
-        base_url_substr="sjsu.edu", max_pages=200, output_file="scraped_data_1.jsonl"
+        base_url_substr=config.SCRAPER_CONFIG["base_url_substr"],
+        max_pages=config.SCRAPER_CONFIG["max_pages"],
+        output_file=config.SCRAPER_CONFIG["output_file"],
     )
     scraper.scrape_via_queue(
-        start_urls=[
-            "https://www.sjsu.edu/",
-            "https://catalog.sjsu.edu/content.php?catoid=13&navoid=4983",
-        ]
+        start_urls=config.SCRAPER_CONFIG["start_urls"],
     )
