@@ -138,7 +138,7 @@ class WebScraper:
 
         self.flush_buffer()  # Flush any remaining data in buffer
 
-    def create_chunks():
+    def create_chunks(self):
         """
         Splits input text into smaller chunks and writes them to an output file.
         Each chunk includes metadata for later retrieval.
@@ -189,6 +189,10 @@ class WebScraper:
 
 if __name__ == "__main__":
     """Run the web scraper on sjsu.edu domain."""
+
+    print(
+        f"Starting web scraping with the following configuration:\n{json.dumps(config.SCRAPER_CONFIG, indent=4)}"
+    )
     scraper = WebScraper(
         base_url_substr=config.SCRAPER_CONFIG["base_url_substr"],
         max_pages=config.SCRAPER_CONFIG["max_pages"],
@@ -197,5 +201,7 @@ if __name__ == "__main__":
     scraper.scrape_via_queue(
         start_urls=config.SCRAPER_CONFIG["start_urls"],
     )
-    print("Creating chunks from scraped data...")
+    print(
+        f"Creating chunks from scraped data with the following configuration:\n{json.dumps(config.TEXT_SPLITTER_CONFIG, indent=4)}"
+    )
     scraper.create_chunks()
