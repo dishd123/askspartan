@@ -62,9 +62,12 @@ class ChromaDbRetriever:
         """
         Loads an existing ChromaDB collection.
         """
+        print(
+            f"Loading an existing ChromaDB collection with the following configuration:\n{json.dumps(config.CHROMA_CONFIG, indent=4)}"
+        )
         self.collection = self.client.get_collection(name=self.COLLECTION_NAME)
 
-    def query(self, query_text, n_results=5):
+    def query(self, query_text, n_results=config.CHROMA_CONFIG["n_results"]):
         """
         Queries the ChromaDB collection for the most relevant documents based on the input text.
         Returns a list of document IDs and their corresponding metadata.

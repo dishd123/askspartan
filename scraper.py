@@ -41,6 +41,9 @@ class WebScraper:
             "http://",
             "sjsuone",
             "events",
+            "&returnto",
+            "&print",
+            "&filter",
         ]
         self.tags_to_remove = [
             "script",
@@ -132,7 +135,7 @@ class WebScraper:
 
             time.sleep(1)  # Be polite to the server
             text, links = self.scrape_page(url)
-            print(f"---Page {self.pages_scraped}: {url} ---{text}")
+            # print(f"---Page {self.pages_scraped}: {url} ---{text}")
             self.add_to_buffer(url, text)
             queue.extend(links)
 
