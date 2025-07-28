@@ -3,6 +3,9 @@ from typing import List
 import config
 from llama_cpp import Llama
 from setup_db_and_retriever import ChromaDbRetriever
+from utils.logger import get_logger
+
+logger = get_logger(level="INFO")  # or "WARNING" or "ERROR" or "INFO" or "DEBUG"
 
 
 class LLMResponseGenerator:
@@ -23,19 +26,11 @@ class LLMResponseGenerator:
         """
         Initialize the LLM pipeline and retriever.
         """
-        self.init_config = config.LLM_RESPONSE_GENERATOR_CONFIG["INIT_CONFIG"]
-        self.call_config = config.LLM_RESPONSE_GENERATOR_CONFIG["CALL_CONFIG"]
-        self.summary_generator_config = config.LLM_RESPONSE_GENERATOR_CONFIG[
-            "SUMMARY_GENERATOR_CONFIG"
+        self.summary_generator_config = config.LLM_CONFIG["SUMMARY_GENERATOR_CONFIG"]
+        self.query_reformulation_config = config.LLM_CONFIG[
+            "QUERY_REFORMULATION_CONFIG"
         ]
-        self.use_chat_history = config.LLM_RESPONSE_GENERATOR_CONFIG.get(
-            "use_chat_history", True
-        )
-        self.chat_history_lookback = config.LLM_RESPONSE_GENERATOR_CONFIG.get(
-            "chat_history_lookback", 3
-        )
-        self.prompt_template = config.LLM_RESPONSE_GENERATOR_CONFIG["prompt_template"]
-        self.summary_template = config.LLM_RESPONSE_GENERATOR_CONFIG["summary_template"]
+        self.response_generator_config = config.LLM_CONFIG["RESPONSE_GENERATOR_CONFIG"]
 
         self.retriever = ChromaDbRetriever()
         self.retriever.load_an_existing_collection()
@@ -48,37 +43,79 @@ class LLMResponseGenerator:
         Returns:
             An instance of Llama from llama_cpp.
         """
-        model_path = self.init_config["model_path"]
+        model_path = self.response_generator_config["INIT_CONFIG"]["model_path"]
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model path {model_path} does not exist.")
 
-        return Llama(**self.init_config)
+        return Llama(**self.response_generator_config["INIT_CONFIG"])
 
-    def _summarize_chat_history(self, chat_history) -> str:
+    def _summarize_coversation_history(self, coversation_history) -> str:
         """
         Summarizes the last k rounds of chat history using the same LLM.
 
         Args:
-            chat_history (List[Tuple[str, str]]): List of (user, assistant) messages.
+            coversation_history (List[Tuple[str, str]]): List of (user, assistant) messages.
             k (int): Number of recent turns to summarize.
 
         Returns:
             str: A concise summary of recent conversation.
         """
+        if (
+            not self.summary_generator_config["use_coversation_history"]
+            or not coversation_history
+            or len(coversation_history) == 0
+        ):
+            # No chat history to summarize
+            return ""
 
-        recent_history = chat_history[-self.chat_history_lookback :]
+        recent_history = coversation_history[
+            -self.summary_generator_config["coversation_history_lookback"] :
+        ]
         raw_dialogue = "\n".join(
-            [f"USER_INPUT: {u}\nCHATBOT_RESPONSE: {a}" for u, a in recent_history]
+            [f"USER: {u}\nCHATBOT: {a}" for u, a in recent_history]
         )
 
-        summary_prompt = self.summary_template.format(raw_dialogue=raw_dialogue)
-        # print(f"Summary prompt:\n{summary_prompt}\n")
-        summary_response = self.llm(summary_prompt, **self.summary_generator_config)
-        summary_text = summary_response["choices"][0]["text"].strip()
-        # print(f"Chat history summary:\n{summary_text}\n")
-        return summary_text
+        summarization_prompt = self.summary_generator_config["prompt_template"].format(
+            raw_dialogue=raw_dialogue
+        )
+        # logger.info(f"Summary prompt:\n{summarization_prompt}\n")
+        summary_response = self.llm(
+            summarization_prompt, **self.summary_generator_config["CALL_CONFIG"]
+        )
+        summarized_conversation_history = summary_response["choices"][0]["text"].strip()
+        logger.info(
+            f"Conversation history summary:\n{summarized_conversation_history}\n"
+        )
+        return summarized_conversation_history
 
-    def _build_prompt(self, query: str, documents: List[str], chat_history) -> str:
+    def _reformulate_query(
+        self, query: str, summarized_conversation_history: str
+    ) -> str:
+        """
+        Reformulates the user's query to include relevant context from the conversation summary.
+
+        Args:
+            query (str): The user's original question.
+            summarized_conversation_history (str): Summary of recent k conversations.
+
+        Returns:
+            str: The reformulated query.
+        """
+        if not summarized_conversation_history:
+            return query
+
+        reformulation_prompt = self.query_reformulation_config[
+            "prompt_template"
+        ].format(summary=summarized_conversation_history, query=query)
+
+        reformulation_response = self.llm(
+            reformulation_prompt, **self.query_reformulation_config["CALL_CONFIG"]
+        )
+        reformulated_query = reformulation_response["choices"][0]["text"].strip()
+        logger.info(f"Reformulated query:\n{reformulated_query}\n")
+        return reformulated_query
+
+    def _build_prompt(self, query: str, documents: List[str]) -> str:
         """
         Builds a prompt for the LLM using the retrieved documents and the user's query.
 
@@ -91,31 +128,37 @@ class LLMResponseGenerator:
         """
 
         context = "\n\n".join(documents)
-        prompt = self.prompt_template.format(context=context, query=query)
+        prompt = self.response_generator_config["prompt_template"].format(
+            context=context, query=query
+        )
 
-        if self.use_chat_history and chat_history:
-            chat_history_summary = self._summarize_chat_history(chat_history)
-            prompt = (
-                f"### Summary of previous chats:\n{chat_history_summary}\n\n" + prompt
-            )
-        # print(f"Final prompt to LLM:\n{prompt}\n")
+        logger.info(f"Final prompt to LLM:\n{prompt}\n")
         return prompt
 
-    def generate_response(self, query: str, chat_history=None) -> str:
+    def generate_response(self, query: str, coversation_history=None) -> str:
         """
         Generates a response to the user's query using the LLM and retrieved documents.
 
         Args:
             query (str): The user's question.
+            coversation_history (List[Tuple[str, str]], optional): List of (user, assistant) messages for context.
 
         Returns:
             str: The generated response from the LLM.
         """
 
-        retriever_results = self.retriever.query(query)
-        documents = retriever_results["documents"][0]
-        prompt = self._build_prompt(query, documents, chat_history)
+        summarized_conversation_history = self._summarize_coversation_history(
+            coversation_history
+        )
 
-        response = self.llm(prompt, **self.call_config)
-        # print(f"LLM raw response:\n{response["choices"][0]["text"]}\n")
+        reformulated_query = self._reformulate_query(
+            query, summarized_conversation_history
+        )
+
+        retriever_results = self.retriever.query(reformulated_query)
+        documents = retriever_results["documents"][0]
+        prompt = self._build_prompt(query, documents)
+
+        response = self.llm(prompt, **self.response_generator_config["CALL_CONFIG"])
+        # logger.info(f"LLM raw response:\n{response["choices"][0]["text"]}\n")
         return response
